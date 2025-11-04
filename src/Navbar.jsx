@@ -1,8 +1,11 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { useAuth } from './AuthContext';
 
 export default function Navbar() {
   const location = useLocation();
+  const { user, logout } = useAuth();
+  const [showDropdown, setShowDropdown] = useState(false);
   
   const isActive = (path) => location.pathname === path;
   
@@ -24,6 +27,36 @@ export default function Navbar() {
             Improvements
           </Link>
         </div>
+        
+        {user && (
+          <div className="user-menu">
+            <button 
+              className="user-profile-btn"
+              onClick={() => setShowDropdown(!showDropdown)}
+            >
+              <img 
+                src={user.picture} 
+                alt={user.name}
+                className="user-avatar"
+              />
+              <span className="user-name">{user.name}</span>
+              <span className="dropdown-arrow">▼</span>
+            </button>
+            
+            {showDropdown && (
+              <div className="dropdown-menu">
+                <div className="dropdown-item user-info">
+                  <strong>{user.name}</strong>
+                  <small>{user.email}</small>
+                </div>
+                <hr />
+                <button onClick={logout} className="dropdown-item logout-btn">
+                  🚪 Logout
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </nav>
   );
