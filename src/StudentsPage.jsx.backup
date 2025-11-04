@@ -1,0 +1,920 @@
+import React, { useEffect, useState } from 'react';
+
+const API_URL = '/api/feedback';
+
+const formatDate = (dateString) => {
+	if (!dateString) return 'N/A';
+	const options = { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' };
+	return new Date(dateString).toLocaleDateString(undefined, options);
+};
+
+export default function StudentsPage() {
+	const [feedback, setFeedback] = useState([]);
+	const [students, setStudents] = useState([]);
+	const [selectedStudent, setSelectedStudent] = useState(null);
+	co												</h3>
+												<div className="student-stats">
+													<div className="stat-item">
+														<span className="stat-icon">📝</span>
+														<span>{student.count} submission{student.count !== 1 ? 's' : ''}</span>
+													</div>
+													<div className="stat-item">
+														<span className="stat-icon">💻</span>
+														<span>{student.totalWebDev} Web</span>
+													</div>
+													<div className="stat-item">
+														<span className="stat-icon">🧮</span>
+														<span>{student.totalDSA} DSA</span>
+													</div>
+													<div className="stat-item">
+														<span className="stat-icon">📊</span>
+														<span>{student.totalQuestions} total</span>
+													</div>
+												</div>tFeedback, setStudentFeedback] = useState([]);
+	const [loading, setLoading] = useState(true);
+	const [error, setError] = useState(null);
+	const [editingId, setEditingId] = useState(null);
+	const [selectedFeedbackId, setSelectedFeedbackId] = useState(null); // For click-to-reveal
+	const [showQuickAddModal, setShowQuickAddModal] = useState(false); // For quick add modal
+	const [quickAddStudent, setQuickAddStudent] = useState(null); // Student for quick add
+	const [editForm, setEditForm] = useState({
+		studentName: '',
+		house: '',
+		webDevQuestions: 0,
+		dsaQuestions: 0,
+		comment: ''
+	});
+	const [showAddForm, setShowAddForm] = useState(false);
+	const [addForm, setAddForm] = useState({
+		studentName: '',
+		house: '',
+		webDevQuestions: 0,
+		dsaQuestions: 0,
+		comment: ''
+	});
+	const [quickAddForm, setQuickAddForm] = useState({
+		webDevQuestions: 0,
+		dsaQuestions: 0,
+		comment: ''
+	});
+	const [showAddStudentForm, setShowAddStudentForm] = useState(false);
+	const [addStudentForm, setAddStudentForm] = useState({
+		studentName: '',
+		house: ''
+	});
+
+	useEffect(() => {
+		loadFeedback();
+	}, []);
+
+	const loadFeedback = async () => {
+		setLoading(true);
+		try {
+			const res = await fetch(API_URL);
+			if (!res.ok) throw new Error('Failed to fetch');
+			const data = await res.json();
+			setFeedback(data);
+			
+			// Extract distinct students with their stats
+			const studentMap = {};
+			data.forEach(item => {
+				if (!studentMap[item.studentName]) {
+					studentMap[item.studentName] = {
+						name: item.studentName,
+						count: 0,
+						totalWebDev: 0,
+						totalDSA: 0,
+						house: item.house
+					};
+				}
+				studentMap[item.studentName].count++;
+				studentMap[item.studentName].totalWebDev += (item.webDevQuestions || 0);
+				studentMap[item.studentName].totalDSA += (item.dsaQuestions || 0);
+			});
+			
+			const distinctStudents = Object.values(studentMap).map(s => ({
+				...s,
+				totalQuestions: s.totalWebDev + s.totalDSA
+			}));
+			
+			setStudents(distinctStudents);
+		} catch (err) {
+			setError(err.message);
+		} finally {
+			setLoading(false);
+		}
+	};
+
+	const handleStudentClick = (studentName) => {
+		setSelectedStudent(studentName);
+		const filtered = feedback.filter(f => f.studentName === studentName);
+		setStudentFeedback(filtered);
+	};
+
+	const handleStudentNameClick = (student) => {
+		// Open modal for quick feedback add
+		setQuickAddStudent(student);
+		setQuickAddForm({ webDevQuestions: 0, dsaQuestions: 0, comment: '' });
+		setShowQuickAddModal(true);
+	};
+
+	const handleQuickAddSubmit = async (e) => {
+		e.preventDefault();
+		
+		try {
+			const feedbackData = {
+				studentName: quickAddStudent.name,
+				house: quickAddStudent.house,
+				webDevQuestions: parseInt(quickAddForm.webDevQuestions),
+				dsaQuestions: parseInt(quickAddForm.dsaQuestions),
+				comment: quickAddForm.comment
+			};
+			
+			const res = await fetch(API_URL, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(feedbackData)
+			});
+			
+			if (!res.ok) throw new Error('Failed to add feedback');
+			
+			// Reload feedback
+			await loadFeedback();
+			
+			// Close modal
+			setShowQuickAddModal(false);
+			setQuickAddStudent(null);
+			setQuickAddForm({ webDevQuestions: 0, dsaQuestions: 0, comment: '' });
+		} catch (err) {
+			alert('Error adding feedback: ' + err.message);
+		}
+	};
+
+	const handleCloseQuickAddModal = () => {
+		setShowQuickAddModal(false);
+		setQuickAddStudent(null);
+		setQuickAddForm({ webDevQuestions: 0, dsaQuestions: 0, comment: '' });
+	};
+
+	const handleBack = () => {
+		setSelectedStudent(null);
+		setStudentFeedback([]);
+		setEditingId(null);
+		setShowAddForm(false);
+		setSelectedFeedbackId(null);
+	};
+
+	const handleDelete = async (id) => {
+		if (!confirm('Are you sure you want to delete this feedback?')) return;
+		
+		try {
+			// Find the feedback being deleted to get student info
+			const feedbackToDelete = feedback.find(f => f._id === id);
+			if (!feedbackToDelete) return;
+			
+			const studentName = feedbackToDelete.studentName;
+			const studentHouse = feedbackToDelete.house;
+			
+			// Check if this is the last feedback for this student
+			const studentFeedbackCount = feedback.filter(f => f.studentName === studentName).length;
+			const isLastFeedback = studentFeedbackCount === 1;
+			
+			// Delete the feedback
+			const res = await fetch(`${API_URL}/${id}`, { method: 'DELETE' });
+			if (!res.ok) throw new Error('Failed to delete');
+			
+			// If it was the last feedback, create a placeholder to keep the student
+			if (isLastFeedback) {
+				const placeholderData = {
+					studentName: studentName,
+					house: studentHouse,
+					webDevQuestions: 0,
+					dsaQuestions: 0,
+					comment: 'Student entry (no feedback yet)'
+				};
+				
+				const createRes = await fetch(API_URL, {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify(placeholderData)
+				});
+				
+				if (!createRes.ok) throw new Error('Failed to create placeholder');
+			}
+			
+			// Reload all data
+			await loadFeedback();
+			
+			// Refresh student detail view if we're viewing this student
+			if (selectedStudent === studentName) {
+				const filtered = feedback.filter(f => f.studentName === studentName && f._id !== id);
+				if (isLastFeedback) {
+					// Reload to get the new placeholder
+					await loadFeedback();
+					const newFiltered = feedback.filter(f => f.studentName === studentName);
+					setStudentFeedback(newFiltered);
+				} else {
+					setStudentFeedback(filtered);
+				}
+			}
+		} catch (err) {
+			alert('Error deleting feedback: ' + err.message);
+		}
+	};
+
+	const handleEdit = (item) => {
+		setEditingId(item._id);
+		setSelectedFeedbackId(null); // Hide action buttons when editing
+		setEditForm({
+			studentName: item.studentName,
+			house: item.house,
+			rating: item.rating,
+			comment: item.comment
+		});
+	};
+
+	const handleFeedbackClick = (feedbackId) => {
+		// Toggle selection - if already selected, deselect it
+		if (selectedFeedbackId === feedbackId) {
+			setSelectedFeedbackId(null);
+		} else {
+			setSelectedFeedbackId(feedbackId);
+		}
+	};
+
+	const handleUpdate = async (id) => {
+		try {
+			const res = await fetch(`${API_URL}/${id}`, {
+				method: 'PUT',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(editForm)
+			});
+			if (!res.ok) throw new Error('Failed to update');
+			const updated = await res.json();
+			
+			// Update both feedback and studentFeedback states
+			const newFeedback = feedback.map(f => f._id === id ? updated : f);
+			setFeedback(newFeedback);
+			setStudentFeedback(studentFeedback.map(f => f._id === id ? updated : f));
+			setEditingId(null);
+			
+			// Reload students if name changed
+			loadFeedback();
+		} catch (err) {
+			alert('Error updating feedback: ' + err.message);
+		}
+	};
+
+	const handleCancelEdit = () => {
+		setEditingId(null);
+		setEditForm({ studentName: '', house: '', rating: '', comment: '' });
+	};
+
+	const handleAddFeedback = () => {
+		setShowAddForm(true);
+		setAddForm({
+			studentName: selectedStudent,
+			house: studentFeedback[0]?.house || '',
+			webDevQuestions: 0,
+			dsaQuestions: 0,
+			comment: ''
+		});
+	};
+
+	const handleSubmitAdd = async (e) => {
+		e.preventDefault();
+		
+		try {
+			const res = await fetch(API_URL, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(addForm)
+			});
+			
+			if (!res.ok) throw new Error('Failed to add feedback');
+			const newFeedback = await res.json();
+			
+			// Reload all data
+			await loadFeedback();
+			
+			// Update student feedback view
+			const filtered = [...feedback, newFeedback].filter(f => f.studentName === selectedStudent);
+			setStudentFeedback(filtered);
+			
+			setShowAddForm(false);
+			setAddForm({ studentName: '', house: '', rating: 5, comment: '' });
+		} catch (err) {
+			alert('Error adding feedback: ' + err.message);
+		}
+	};
+
+	const handleCancelAdd = () => {
+		setShowAddForm(false);
+		setAddForm({ studentName: '', house: '', webDevQuestions: 0, dsaQuestions: 0, comment: '' });
+	};
+
+	const handleAddStudent = () => {
+		setShowAddStudentForm(true);
+		setAddStudentForm({
+			studentName: '',
+			house: ''
+		});
+	};
+
+	const handleSubmitAddStudent = async (e) => {
+		e.preventDefault();
+		
+		if (!addStudentForm.studentName.trim()) {
+			alert('Please enter a student name');
+			return;
+		}
+		
+		if (!addStudentForm.house) {
+			alert('Please select a house');
+			return;
+		}
+		
+		try {
+			// Create initial feedback entry with default values
+			const newStudentData = {
+				studentName: addStudentForm.studentName,
+				house: addStudentForm.house,
+				webDevQuestions: 0,
+				dsaQuestions: 0,
+				comment: 'Initial student entry'
+			};
+			
+			const res = await fetch(API_URL, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(newStudentData)
+			});
+			
+			if (!res.ok) throw new Error('Failed to add student');
+			
+			// Reload all data
+			await loadFeedback();
+			
+			setShowAddStudentForm(false);
+			setAddStudentForm({ studentName: '', house: '' });
+		} catch (err) {
+			alert('Error adding student: ' + err.message);
+		}
+	};
+
+	const handleCancelAddStudent = () => {
+		setShowAddStudentForm(false);
+		setAddStudentForm({ studentName: '', house: '' });
+	};
+
+	if (loading) return <div className="page-container"><div className="card">Loading...</div></div>;
+	if (error) return <div className="page-container"><div className="card">Error: {error}</div></div>;
+
+	// Group students by house
+	const studentsByHouse = students.reduce((acc, student) => {
+		const house = student.house || 'No House';
+		if (!acc[house]) {
+			acc[house] = [];
+		}
+		acc[house].push(student);
+		return acc;
+	}, {});
+
+	const houses = ['Bhairav', 'Bhageshree', 'Megh'];
+	const currentStudentHouse = studentFeedback[0]?.house || '';
+
+	// Calculate stats for each house
+	const bhairavStudents = studentsByHouse['Bhairav'] || [];
+	const bhageshreeStudents = studentsByHouse['Bhageshree'] || [];
+	const meghStudents = studentsByHouse['Megh'] || [];
+	
+	const bhairavCount = bhairavStudents.length;
+	const bhageshreeCount = bhageshreeStudents.length;
+	const meghCount = meghStudents.length;
+	const totalStudentsInHouses = bhairavCount + bhageshreeCount + meghCount;
+	
+	// Calculate score out of 100 for each house (based on total questions completed)
+	const calculateHouseScore = (houseStudents) => {
+		if (houseStudents.length === 0) return 0;
+		const totalQuestions = houseStudents.reduce((sum, s) => sum + s.totalQuestions, 0);
+		// Score based on average questions per student (capped at 100)
+		const avgQuestions = totalQuestions / houseStudents.length;
+		// Assuming 10 questions = 100 score (adjust scale as needed)
+		return Math.min((avgQuestions * 10), 100).toFixed(1);
+	};
+	
+	const bhairavScore = calculateHouseScore(bhairavStudents);
+	const bhageshreeScore = calculateHouseScore(bhageshreeStudents);
+	const meghScore = calculateHouseScore(meghStudents);
+
+	return (
+		<div className="page-container">
+			{!selectedStudent ? (
+				<>
+					<h2 className="page-title">Students Directory</h2>
+					<p className="page-subtitle">Click on any student to view their feedback history</p>
+					
+					<div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24}}>
+						<div></div>
+						<button 
+							className="btn btn-primary add-student-btn"
+							onClick={handleAddStudent}
+						>
+							<span style={{fontSize: '1.3rem', marginRight: 8}}>+</span>
+							Add New Student
+						</button>
+					</div>
+
+					{showAddStudentForm && (
+						<div className="card" style={{marginBottom: 32, background: '#f8fafc', border: '2px dashed var(--accent)'}}>
+							<h3 style={{marginTop: 0}}>Add New Student</h3>
+							<form onSubmit={handleSubmitAddStudent} className="form-grid">
+								<div className="form-group">
+									<label className="label">Student Name *</label>
+									<input
+										type="text"
+										value={addStudentForm.studentName}
+										onChange={e => setAddStudentForm({...addStudentForm, studentName: e.target.value})}
+										placeholder="Enter student name..."
+										required
+									/>
+								</div>
+								<div className="form-group">
+									<label className="label">House *</label>
+									<select
+										value={addStudentForm.house}
+										onChange={e => setAddStudentForm({...addStudentForm, house: e.target.value})}
+										required
+									>
+										<option value="">Select House</option>
+										<option value="Bhairav">Bhairav</option>
+										<option value="Bhageshree">Bhageshree</option>
+										<option value="Megh">Megh</option>
+									</select>
+								</div>
+								<div style={{display: 'flex', gap: '10px', marginTop: '10px', gridColumn: '1 / -1'}}>
+									<button 
+										type="submit"
+										className="btn btn-primary"
+									>
+										💾 Add Student
+									</button>
+									<button 
+										type="button"
+										className="btn" 
+										onClick={handleCancelAddStudent}
+										style={{background: '#6b7280', color: 'white'}}
+									>
+										Cancel
+									</button>
+								</div>
+							</form>
+						</div>
+					)}
+					
+					<div className="stats-section">
+						<div className="stats-grid">
+							<div className="stat-card">
+								<div className="stat-value">{totalStudentsInHouses}</div>
+								<div className="stat-label">Total Students</div>
+							</div>
+						</div>
+
+						<div className="house-stats-grid" style={{marginTop: 20}}>
+							<div className="house-stat-card" style={{borderColor: '#fbbf24'}}>
+								<h4 style={{color: '#92400e'}}>Bhairav</h4>
+								<div className="count" style={{color: '#d97706'}}>{bhairavCount}</div>
+								<div className="stat-label" style={{fontSize: '0.85rem', color: '#6b7280', marginTop: 4}}>
+									students
+								</div>
+								<div className="house-score" style={{marginTop: 8, fontSize: '1.2rem', fontWeight: 700, color: '#d97706'}}>
+									{bhairavScore}/100
+								</div>
+							</div>
+							<div className="house-stat-card" style={{borderColor: '#60a5fa'}}>
+								<h4 style={{color: '#1e40af'}}>Bhageshree</h4>
+								<div className="count" style={{color: '#2563eb'}}>{bhageshreeCount}</div>
+								<div className="stat-label" style={{fontSize: '0.85rem', color: '#6b7280', marginTop: 4}}>
+									students
+								</div>
+								<div className="house-score" style={{marginTop: 8, fontSize: '1.2rem', fontWeight: 700, color: '#2563eb'}}>
+									{bhageshreeScore}/100
+								</div>
+							</div>
+							<div className="house-stat-card" style={{borderColor: '#34d399'}}>
+								<h4 style={{color: '#166534'}}>Megh</h4>
+								<div className="count" style={{color: '#059669'}}>{meghCount}</div>
+								<div className="stat-label" style={{fontSize: '0.85rem', color: '#6b7280', marginTop: 4}}>
+									students
+								</div>
+								<div className="house-score" style={{marginTop: 8, fontSize: '1.2rem', fontWeight: 700, color: '#059669'}}>
+									{meghScore}/100
+								</div>
+							</div>
+						</div>
+					</div>
+
+					<div className="houses-container">
+						{houses.map(house => {
+							const houseStudents = studentsByHouse[house] || [];
+							if (houseStudents.length === 0) return null;
+							
+							return (
+								<div key={house} className="house-section">
+									<div className="house-header">
+										<h3 className="house-title">
+											<span className={`house-badge ${house.toLowerCase()}`}>
+												{house}
+											</span>
+											<span className="house-count">
+												{houseStudents.length} student{houseStudents.length !== 1 ? 's' : ''}
+											</span>
+										</h3>
+									</div>
+									
+									<div className="students-grid">
+										{houseStudents.map(student => (
+											<div 
+												key={student.name} 
+												className="student-card"
+											>
+												<div className="student-avatar">
+													{student.name.charAt(0).toUpperCase()}
+												</div>
+												<div className="student-info">
+													<h3 
+														className="student-name" 
+														onClick={(e) => {
+															e.stopPropagation();
+															handleStudentNameClick(student);
+														}}
+														style={{cursor: 'pointer', color: 'var(--accent)'}}
+														title="Click to add feedback"
+													>
+														{student.name}
+													</h3>
+													<div className="student-stats">
+														<div className="stat-item">
+															<span className="stat-icon">📝</span>
+															<span>{student.count} feedback{student.count !== 1 ? 's' : ''}</span>
+														</div>
+														<div className="stat-item">
+															<span className="stat-icon">⭐</span>
+															<span>{student.avgRating} avg</span>
+														</div>
+													</div>
+												</div>
+												<div 
+													className="student-arrow"
+													onClick={() => handleStudentClick(student.name)}
+													style={{cursor: 'pointer'}}
+													title="View details"
+												>
+													→
+												</div>
+											</div>
+										))}
+									</div>
+								</div>
+							);
+						})}
+					</div>
+				</>
+			) : (
+				<>
+					<button 
+						className="btn" 
+						onClick={handleBack}
+						style={{marginBottom: 20, background: '#6b7280', color: 'white'}}
+					>
+						← Back to Students
+					</button>
+					
+					<h2 className="page-title">{selectedStudent}</h2>
+					<p className="page-subtitle">All feedback from this student ({studentFeedback.length} total)</p>
+
+					<div className="student-detail-stats">
+						<div className="stat-card">
+							<div className="stat-value">{studentFeedback.length}</div>
+							<div className="stat-label">Total Submissions</div>
+						</div>
+						<div className="stat-card secondary">
+							<div className="stat-value">
+								{(studentFeedback.reduce((sum, f) => sum + f.rating, 0) / studentFeedback.length).toFixed(1)}
+							</div>
+							<div className="stat-label">Average Rating</div>
+						</div>
+						<div className="stat-card tertiary">
+							<div className="stat-value">
+								{studentFeedback[0]?.house || 'N/A'}
+							</div>
+							<div className="stat-label">House</div>
+						</div>
+					</div>
+
+					<div className="feedback-timeline">
+						{studentFeedback
+							.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+							.map((item, index) => (
+							<div key={item._id} className="timeline-item">
+								<div className="timeline-badge">{index + 1}</div>
+								<div className="timeline-content card">
+									{editingId === item._id ? (
+										<div className="form-grid">
+											<div className="form-group">
+												<label className="label">Student Name</label>
+												<input
+													type="text"
+													value={editForm.studentName}
+													onChange={e => setEditForm({...editForm, studentName: e.target.value})}
+												/>
+											</div>
+											<div className="form-group">
+												<label className="label">House</label>
+												<select
+													value={editForm.house}
+													onChange={e => setEditForm({...editForm, house: e.target.value})}
+												>
+													<option value="Bhairav">Bhairav</option>
+													<option value="Bhageshree">Bhageshree</option>
+													<option value="Megh">Megh</option>
+												</select>
+											</div>
+											<div className="form-group">
+												<label className="label">Rating</label>
+												<select
+													value={editForm.rating}
+													onChange={e => setEditForm({...editForm, rating: parseInt(e.target.value)})}
+												>
+													<option value="1">1</option>
+													<option value="2">2</option>
+													<option value="3">3</option>
+													<option value="4">4</option>
+													<option value="5">5</option>
+												</select>
+											</div>
+											<div className="form-group">
+												<label className="label">Comment</label>
+												<textarea
+													value={editForm.comment}
+													onChange={e => setEditForm({...editForm, comment: e.target.value})}
+													style={{minHeight: '80px'}}
+												/>
+											</div>
+											<div style={{display: 'flex', gap: '10px', marginTop: '10px'}}>
+												<button 
+													className="btn btn-primary" 
+													onClick={() => handleUpdate(item._id)}
+												>
+													💾 Save
+												</button>
+												<button 
+													className="btn" 
+													onClick={handleCancelEdit}
+													style={{background: '#6b7280', color: 'white'}}
+												>
+													Cancel
+												</button>
+											</div>
+										</div>
+									) : (
+										<>
+											<div 
+											onClick={() => handleFeedbackClick(item._id)}
+											style={{cursor: 'pointer'}}
+										>
+											<div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12}}>
+												<div className="questions-badge" style={{display: 'flex', gap: '12px', alignItems: 'center'}}>
+													<div style={{background: '#3b82f6', color: 'white', padding: '6px 12px', borderRadius: '6px', fontSize: '0.9rem'}}>
+														💻 {item.webDevQuestions || 0} Web Dev
+													</div>
+													<div style={{background: '#8b5cf6', color: 'white', padding: '6px 12px', borderRadius: '6px', fontSize: '0.9rem'}}>
+														🧮 {item.dsaQuestions || 0} DSA
+													</div>
+													<div style={{background: '#10b981', color: 'white', padding: '6px 12px', borderRadius: '6px', fontSize: '0.9rem', fontWeight: 'bold'}}>
+														Total: {(item.webDevQuestions || 0) + (item.dsaQuestions || 0)}
+													</div>
+												</div>
+												<div className="small muted">{formatDate(item.timestamp)}</div>
+											</div>
+											<p style={{lineHeight: 1.6, marginBottom: 16}}>
+												{item.comment || <span className="muted">No comment provided.</span>}
+											</p>
+										</div>											{/* Show icons only when this feedback is selected */}
+											{selectedFeedbackId === item._id && (
+												<div 
+													style={{
+														display: 'flex', 
+														gap: '12px', 
+														borderTop: '1px solid #e5e7eb', 
+														paddingTop: 12,
+														justifyContent: 'flex-end'
+													}}
+												>
+													<button 
+														onClick={(e) => {
+															e.stopPropagation();
+															handleEdit(item);
+														}}
+														className="icon-btn"
+														style={{
+															background: '#3b82f6',
+															color: 'white',
+															border: 'none',
+															borderRadius: '8px',
+															padding: '8px 12px',
+															cursor: 'pointer',
+															fontSize: '1.2rem',
+															transition: 'all 0.2s'
+														}}
+														title="Edit"
+													>
+														✏️
+													</button>
+													<button 
+														onClick={(e) => {
+															e.stopPropagation();
+															handleDelete(item._id);
+														}}
+														className="icon-btn"
+														style={{
+															background: '#dc2626',
+															color: 'white',
+															border: 'none',
+															borderRadius: '8px',
+															padding: '8px 12px',
+															cursor: 'pointer',
+															fontSize: '1.2rem',
+															transition: 'all 0.2s'
+														}}
+														title="Delete"
+													>
+														🗑️
+													</button>
+												</div>
+											)}
+										</>
+									)}
+								</div>
+							</div>
+						))}
+					</div>
+
+					{/* Add Feedback Button */}
+					{!showAddForm && (
+						<div style={{marginTop: 32, textAlign: 'center'}}>
+							<button 
+								className="btn btn-primary add-feedback-btn"
+								onClick={handleAddFeedback}
+							>
+								<span style={{fontSize: '1.5rem', marginRight: 8}}>+</span>
+								Add New Feedback
+							</button>
+						</div>
+					)}
+
+					{/* Add Feedback Form */}
+					{showAddForm && (
+						<div className="card" style={{marginTop: 32, background: '#f8fafc', border: '2px dashed var(--accent)'}}>
+							<h3 style={{marginTop: 0}}>Add New Feedback for {selectedStudent}</h3>
+							<form onSubmit={handleSubmitAdd} className="form-grid">
+								<div className="form-group">
+									<label className="label">House</label>
+									<select
+										value={addForm.house}
+										onChange={e => setAddForm({...addForm, house: e.target.value})}
+										required
+										disabled={!!currentStudentHouse}
+										style={{
+											background: currentStudentHouse ? '#f1f5f9' : 'white',
+											cursor: currentStudentHouse ? 'not-allowed' : 'pointer'
+										}}
+									>
+										<option value="">Select House</option>
+										<option value="Bhairav">Bhairav</option>
+										<option value="Bhageshree">Bhageshree</option>
+										<option value="Megh">Megh</option>
+									</select>
+									{currentStudentHouse && (
+										<small style={{color: '#6b7280', marginTop: 4, display: 'block'}}>
+											House is auto-filled based on student's existing data
+										</small>
+									)}
+								</div>
+								<div className="form-group">
+									<label className="label">Rating</label>
+									<select
+										value={addForm.rating}
+										onChange={e => setAddForm({...addForm, rating: parseInt(e.target.value)})}
+										required
+									>
+										<option value="1">1 - Very Poor</option>
+										<option value="2">2 - Poor</option>
+										<option value="3">3 - Average</option>
+										<option value="4">4 - Good</option>
+										<option value="5">5 - Excellent</option>
+									</select>
+								</div>
+								<div className="form-group">
+									<label className="label">Comment</label>
+									<textarea
+										value={addForm.comment}
+										onChange={e => setAddForm({...addForm, comment: e.target.value})}
+										placeholder="Enter feedback comment..."
+										style={{minHeight: '100px'}}
+										required
+									/>
+								</div>
+								<div style={{display: 'flex', gap: '10px', marginTop: '10px'}}>
+									<button 
+										type="submit"
+										className="btn btn-primary"
+									>
+										💾 Save Feedback
+									</button>
+									<button 
+										type="button"
+										className="btn" 
+										onClick={handleCancelAdd}
+										style={{background: '#6b7280', color: 'white'}}
+									>
+										Cancel
+									</button>
+								</div>
+							</form>
+						</div>
+					)}
+				</>
+			)}
+
+			{/* Quick Add Feedback Modal */}
+			{showQuickAddModal && quickAddStudent && (
+				<div 
+					className="modal-overlay"
+					onClick={handleCloseQuickAddModal}
+				>
+					<div 
+						className="modal-content"
+						onClick={(e) => e.stopPropagation()}
+					>
+						<div className="modal-header">
+							<h3 style={{margin: 0}}>Add Feedback for {quickAddStudent.name}</h3>
+							<button 
+								className="modal-close"
+								onClick={handleCloseQuickAddModal}
+							>
+								✕
+							</button>
+						</div>
+						
+						<form onSubmit={handleQuickAddSubmit} style={{marginTop: 20}}>
+							<div className="form-group" style={{marginBottom: 16}}>
+								<label className="label">Rating *</label>
+								<select
+									value={quickAddForm.rating}
+									onChange={e => setQuickAddForm({...quickAddForm, rating: parseInt(e.target.value)})}
+									required
+									style={{width: '100%'}}
+								>
+									<option value="5">⭐⭐⭐⭐⭐ Excellent</option>
+									<option value="4">⭐⭐⭐⭐ Good</option>
+									<option value="3">⭐⭐⭐ Average</option>
+									<option value="2">⭐⭐ Needs Improvement</option>
+									<option value="1">⭐ Requires Attention</option>
+								</select>
+							</div>
+							
+							<div className="form-group" style={{marginBottom: 16}}>
+								<label className="label">Comment *</label>
+								<textarea
+									value={quickAddForm.comment}
+									onChange={e => setQuickAddForm({...quickAddForm, comment: e.target.value})}
+									placeholder="Enter your feedback comment..."
+									required
+									style={{minHeight: '120px', width: '100%'}}
+								/>
+							</div>
+							
+							<div style={{display: 'flex', gap: '10px', justifyContent: 'flex-end'}}>
+								<button 
+									type="button"
+									className="btn"
+									onClick={handleCloseQuickAddModal}
+									style={{background: '#6b7280', color: 'white'}}
+								>
+									Cancel
+								</button>
+								<button 
+									type="submit"
+									className="btn btn-primary"
+								>
+									💾 Submit Feedback
+								</button>
+							</div>
+						</form>
+					</div>
+				</div>
+			)}
+		</div>
+	);
+}
